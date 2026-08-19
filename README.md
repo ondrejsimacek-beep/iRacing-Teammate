@@ -33,8 +33,9 @@ came from this repository's Releases page before running it.
 ## Supported software
 
 iRacing, Crew Chief V4, Trading Paints, Garage61, irDashies, GO Fast (GO Setups),
-SimHub, iOverlay, Racelab, Elgato Stream Deck, iRSidekick, VRS Telemetry Logger,
-Kapps, Joel Real Timing, OpenKneeboard, and Marvin's AIRA.
+SimHub, iOverlay, Racelab, Elgato Stream Deck, CONSPIT Launcher, SimConnect
+Manager, iRSidekick, VRS Telemetry Logger, Kapps, Joel Real Timing,
+OpenKneeboard, and Marvin's AIRA.
 
 Applications that are not detected automatically can be configured with **Browse**.
 

@@ -4,6 +4,17 @@ All notable changes to iRacing Teammate are documented here.
 
 The project uses semantic versioning. GitHub release tags use the `vX.Y.Z` format.
 
+## [1.2.1] - 2026-08-19
+
+### Added
+
+- Automatic detection and lifecycle support for CONSPIT Launcher and SimConnect Manager.
+
+### Fixed
+
+- Track replacement and child processes started by self-updating launchers, so
+  Electron/Squirrel applications such as irDashies close with the iRacing session.
+
 ## [1.2.0] - 2026-08-19
 
 ### Added

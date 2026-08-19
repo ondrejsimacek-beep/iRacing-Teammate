@@ -104,6 +104,12 @@ namespace SnailsMotorsport.IRacingTeammate
                     Path.Combine(local, "Programs", "racelabapps", "RacelabApps.exe")),
                 Def("streamdeck", "Elgato Stream Deck", "CONTROLS", "StreamDeck", "SD", false,
                     Path.Combine(pf, "Elgato", "StreamDeck", "StreamDeck.exe")),
+                Def("conspit", "CONSPIT Launcher", "HARDWARE", "ConspitLink2.0", "CL", true,
+                    Path.Combine(pfx86, "Conspit Link 2.0", "ConspitLink2.0.exe"),
+                    Path.Combine(pf, "Conspit Link 2.0", "ConspitLink2.0.exe")),
+                Def("simconnectmanager", "SimConnect Manager", "HARDWARE", "SimConnectManager", "SC", true,
+                    Path.Combine(pf, "Simnet Racing", "SimConnectManager.exe"),
+                    Path.Combine(pfx86, "Simnet Racing", "SimConnectManager.exe")),
                 Def("irsidekick", "iRSidekick", "PAINTS & TOOLS", "iRSidekick", "iRS", false,
                     Path.Combine(local, "Programs", "iRSidekick", "iRSidekick.exe"),
                     Path.Combine(local, "iRSidekick", "iRSidekick.exe"),
@@ -310,7 +316,7 @@ namespace SnailsMotorsport.IRacingTeammate
 
     public class ProcessController
     {
-        private readonly Dictionary<string, Process> tracked = new Dictionary<string, Process>();
+        private readonly Dictionary<string, List<Process>> tracked = new Dictionary<string, List<Process>>();
         private readonly object sync = new object();
 
         public static bool IsIRacingSessionRunning()
@@ -339,15 +345,29 @@ namespace SnailsMotorsport.IRacingTeammate
         {
             lock (sync)
             {
-                Process process;
-                if (tracked.TryGetValue(definition.Key, out process))
+                List<Process> processes;
+                if (tracked.TryGetValue(definition.Key, out processes))
                 {
-                    try { if (!process.HasExited) return true; }
-                    catch { }
+                    for (int i = processes.Count - 1; i >= 0; i--)
+                    {
+                        try
+                        {
+                            if (!processes[i].HasExited) return true;
+                        }
+                        catch { }
+                        try { processes[i].Dispose(); } catch { }
+                        processes.RemoveAt(i);
+                    }
                     tracked.Remove(definition.Key);
                 }
             }
-            try { return Process.GetProcessesByName(definition.ProcessName).Length > 0; }
+            try
+            {
+                Process[] matches = Process.GetProcessesByName(definition.ProcessName);
+                bool running = matches.Length > 0;
+                foreach (Process match in matches) match.Dispose();
+                return running;
+            }
             catch { return false; }
         }
 
@@ -362,6 +382,7 @@ namespace SnailsMotorsport.IRacingTeammate
             }
             try
             {
+                HashSet<int> existingProcessIds = SnapshotProcessIds(definition.ProcessName);
                 ProcessStartInfo info = new ProcessStartInfo(path);
                 info.WorkingDirectory = Path.GetDirectoryName(path);
                 info.UseShellExecute = true;
@@ -371,7 +392,18 @@ namespace SnailsMotorsport.IRacingTeammate
                     error = "Windows did not return a process handle.";
                     return false;
                 }
-                lock (sync) tracked[definition.Key] = process;
+
+                List<Process> launchedProcesses = new List<Process>();
+                launchedProcesses.Add(process);
+                int stableScans = 0;
+                for (int scan = 0; scan < 15 && stableScans < 3; scan++)
+                {
+                    Thread.Sleep(200);
+                    bool added = AddNewProcesses(definition.ProcessName, existingProcessIds, launchedProcesses);
+                    stableScans = launchedProcesses.Count > 1 && !added ? stableScans + 1 : 0;
+                }
+
+                lock (sync) tracked[definition.Key] = launchedProcesses;
                 return true;
             }
             catch (Exception ex)
@@ -383,30 +415,98 @@ namespace SnailsMotorsport.IRacingTeammate
 
         public bool StopTracked(AppDefinition definition)
         {
-            Process process = null;
+            List<Process> launchedProcesses = null;
             lock (sync)
             {
-                if (tracked.ContainsKey(definition.Key)) process = tracked[definition.Key];
-            }
-            if (process == null) return false;
-            try
-            {
-                if (!process.HasExited)
+                if (tracked.ContainsKey(definition.Key))
                 {
-                    ProcessStartInfo taskkill = new ProcessStartInfo("taskkill.exe",
-                        "/PID " + process.Id + " /T /F");
-                    taskkill.CreateNoWindow = true;
-                    taskkill.UseShellExecute = false;
-                    Process killer = Process.Start(taskkill);
-                    if (killer != null) killer.WaitForExit(5000);
+                    launchedProcesses = tracked[definition.Key];
+                    tracked.Remove(definition.Key);
                 }
             }
-            catch
+            if (launchedProcesses == null) return false;
+
+            bool foundRunningProcess = false;
+            foreach (Process process in launchedProcesses.GroupBy(delegate(Process item)
             {
-                try { if (!process.HasExited) process.Kill(); } catch { }
+                try { return item.Id; } catch { return -1; }
+            }).Select(delegate(IGrouping<int, Process> group) { return group.First(); }))
+            {
+                try
+                {
+                    if (!process.HasExited)
+                    {
+                        foundRunningProcess = true;
+                        ProcessStartInfo taskkill = new ProcessStartInfo("taskkill.exe",
+                            "/PID " + process.Id + " /T /F");
+                        taskkill.CreateNoWindow = true;
+                        taskkill.UseShellExecute = false;
+                        Process killer = Process.Start(taskkill);
+                        if (killer != null)
+                        {
+                            killer.WaitForExit(5000);
+                            killer.Dispose();
+                        }
+                    }
+                }
+                catch
+                {
+                    try { if (!process.HasExited) process.Kill(); } catch { }
+                }
+                try { process.Dispose(); } catch { }
             }
-            lock (sync) tracked.Remove(definition.Key);
-            return true;
+            return foundRunningProcess;
+        }
+
+        private static HashSet<int> SnapshotProcessIds(string processName)
+        {
+            HashSet<int> ids = new HashSet<int>();
+            try
+            {
+                Process[] matches = Process.GetProcessesByName(processName);
+                foreach (Process match in matches)
+                {
+                    try { ids.Add(match.Id); } catch { }
+                    match.Dispose();
+                }
+            }
+            catch { }
+            return ids;
+        }
+
+        private static bool AddNewProcesses(string processName, HashSet<int> existingProcessIds,
+            List<Process> launchedProcesses)
+        {
+            bool added = false;
+            HashSet<int> trackedIds = new HashSet<int>();
+            foreach (Process trackedProcess in launchedProcesses)
+            {
+                try { trackedIds.Add(trackedProcess.Id); } catch { }
+            }
+
+            try
+            {
+                Process[] matches = Process.GetProcessesByName(processName);
+                foreach (Process match in matches)
+                {
+                    int id;
+                    try { id = match.Id; }
+                    catch
+                    {
+                        match.Dispose();
+                        continue;
+                    }
+                    if (!existingProcessIds.Contains(id) && !trackedIds.Contains(id))
+                    {
+                        launchedProcesses.Add(match);
+                        trackedIds.Add(id);
+                        added = true;
+                    }
+                    else match.Dispose();
+                }
+            }
+            catch { }
+            return added;
         }
     }
 
