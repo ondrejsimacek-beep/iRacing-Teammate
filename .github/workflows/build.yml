@@ -22,7 +22,7 @@ jobs:
         run: .\build.ps1 -UpdateRepository "${{ github.repository }}"
 
       - name: Upload executable
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: iRacing-Teammate-${{ github.sha }}
           path: |
