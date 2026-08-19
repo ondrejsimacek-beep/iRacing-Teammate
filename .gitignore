@@ -1,0 +1,19 @@
+# Build outputs
+dist/
+obj/
+snails-teammate.ico
+
+# IDE and user files
+.vs/
+.vscode/
+*.user
+*.suo
+*.cache
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# Local packaging
+*.zip
+*.log

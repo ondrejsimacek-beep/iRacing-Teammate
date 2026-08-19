@@ -1,0 +1,44 @@
+name: Bug report
+description: Report a reproducible launcher problem
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: Thanks for helping improve iRacing Teammate. Do not include passwords or tokens.
+  - type: input
+    id: version
+    attributes:
+      label: Teammate version
+      placeholder: 1.2.0
+    validations:
+      required: true
+  - type: dropdown
+    id: windows
+    attributes:
+      label: Windows version
+      options:
+        - Windows 11
+        - Windows 10
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What happened?
+      description: Describe the expected and actual behavior.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Reproduction steps
+      placeholder: "1. Open Teammate\n2. Select ...\n3. Observe ..."
+    validations:
+      required: true
+  - type: textarea
+    id: paths
+    attributes:
+      label: Relevant application and installation path
+      description: Remove your Windows username if the path contains personal information.

@@ -1,0 +1,31 @@
+name: Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Build launcher
+        shell: powershell
+        run: .\build.ps1 -UpdateRepository "${{ github.repository }}"
+
+      - name: Upload executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: iRacing-Teammate-${{ github.sha }}
+          path: |
+            dist/iRacing Teammate.exe
+            dist/README.md
+          if-no-files-found: error
