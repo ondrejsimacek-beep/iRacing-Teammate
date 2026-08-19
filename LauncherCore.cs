@@ -18,12 +18,14 @@ namespace SnailsMotorsport.IRacingTeammate
         public List<AppSetting> Apps { get; set; }
         public int DefaultDelaySeconds { get; set; }
         public string UpdateRepository { get; set; }
+        public bool AutoModeEnabled { get; set; }
 
         public LauncherSettings()
         {
             Apps = new List<AppSetting>();
             DefaultDelaySeconds = 2;
             UpdateRepository = "";
+            AutoModeEnabled = true;
         }
     }
 
@@ -311,6 +313,28 @@ namespace SnailsMotorsport.IRacingTeammate
         private readonly Dictionary<string, Process> tracked = new Dictionary<string, Process>();
         private readonly object sync = new object();
 
+        public static bool IsIRacingSessionRunning()
+        {
+            string[] sessionProcesses =
+            {
+                "iRacingSim64DX11",
+                "iRacingSim64DX12",
+                "iRacingSim64"
+            };
+            foreach (string processName in sessionProcesses)
+            {
+                try
+                {
+                    Process[] matches = Process.GetProcessesByName(processName);
+                    bool running = matches.Length > 0;
+                    foreach (Process process in matches) process.Dispose();
+                    if (running) return true;
+                }
+                catch { }
+            }
+            return false;
+        }
+
         public bool IsRunning(AppDefinition definition)
         {
             lock (sync)
@@ -391,12 +415,20 @@ namespace SnailsMotorsport.IRacingTeammate
         private const string RunKey = @"Software\Microsoft\Windows\CurrentVersion\Run";
         private const string ValueName = "iRacing Teammate";
 
+        private static string ShortcutPath
+        {
+            get
+            {
+                return Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Startup),
+                    "iRacing Teammate.lnk");
+            }
+        }
+
         public static bool IsEnabled()
         {
             try
             {
-                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey))
-                    return key != null && !String.IsNullOrWhiteSpace(key.GetValue(ValueName) as string);
+                return File.Exists(ShortcutPath);
             }
             catch { return false; }
         }
@@ -405,15 +437,40 @@ namespace SnailsMotorsport.IRacingTeammate
         {
             try
             {
-                using (RegistryKey key = Registry.CurrentUser.CreateSubKey(RunKey))
+                RemoveLegacyRunValue();
+                if (!enabled)
                 {
-                    if (key == null) return false;
-                    if (enabled) key.SetValue(ValueName, "\"" + executablePath + "\"");
-                    else key.DeleteValue(ValueName, false);
+                    if (File.Exists(ShortcutPath)) File.Delete(ShortcutPath);
+                    return true;
                 }
+
+                Directory.CreateDirectory(Path.GetDirectoryName(ShortcutPath));
+                Type shellType = Type.GetTypeFromProgID("WScript.Shell");
+                if (shellType == null) return false;
+                object shell = Activator.CreateInstance(shellType);
+                object shortcut = shellType.InvokeMember("CreateShortcut", BindingFlags.InvokeMethod,
+                    null, shell, new object[] { ShortcutPath });
+                Type shortcutType = shortcut.GetType();
+                shortcutType.InvokeMember("TargetPath", BindingFlags.SetProperty, null, shortcut,
+                    new object[] { executablePath });
+                shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut,
+                    new object[] { Path.GetDirectoryName(executablePath) });
+                shortcutType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut,
+                    new object[] { "Start iRacing Teammate with Windows" });
+                shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
                 return true;
             }
             catch { return false; }
+        }
+
+        private static void RemoveLegacyRunValue()
+        {
+            try
+            {
+                using (RegistryKey key = Registry.CurrentUser.OpenSubKey(RunKey, true))
+                    if (key != null) key.DeleteValue(ValueName, false);
+            }
+            catch { }
         }
     }
 

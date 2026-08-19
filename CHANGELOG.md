@@ -9,6 +9,8 @@ The project uses semantic versioning. GitHub release tags use the `vX.Y.Z` forma
 ### Added
 
 - Start with Windows toggle for the current user.
+- Auto Mode tied to the real iRacing simulator session lifecycle.
+- Automatic companion-app cleanup after a three-second session-end confirmation.
 - GitHub Releases update checker.
 - Automatic repository embedding during GitHub Actions builds.
 - GitHub build and release workflows.

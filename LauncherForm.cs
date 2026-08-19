@@ -43,12 +43,17 @@ namespace SnailsMotorsport.IRacingTeammate
         private readonly LiveryButton hiddenButton;
         private LiveryButton startupButton;
         private LiveryButton updateButton;
+        private LiveryButton autoModeButton;
         private readonly System.Windows.Forms.Timer refreshTimer;
         private volatile bool operationRunning;
+        private volatile bool autoTransitionRunning;
         private bool showHidden;
+        private bool sessionWasRunning;
+        private readonly bool previewMode;
 
         public LauncherForm(bool previewMode)
         {
+            this.previewMode = previewMode;
             definitions = AppCatalog.Create();
             store = new SettingsStore();
             settings = store.Load(definitions);
@@ -253,12 +258,17 @@ namespace SnailsMotorsport.IRacingTeammate
             info.Controls.Add(infoTitle);
 
             Label infoText = new Label();
-            infoText.Text = "Apps start in order. Only processes launched here are stopped by Teammate.";
+            infoText.Text = "Auto Mode follows each iRacing session. Only processes launched here are stopped.";
             infoText.ForeColor = Livery.Muted;
             infoText.Font = new Font("Segoe UI", 8F);
             infoText.Location = new Point(14, 39);
             infoText.Size = new Size(162, 62);
             info.Controls.Add(infoText);
+
+            autoModeButton = new LiveryButton("AUTO MODE", Livery.SurfaceLight, Livery.Silver, 192);
+            autoModeButton.Location = new Point(22, 498);
+            autoModeButton.Click += delegate { ToggleAutoMode(); };
+            sidebar.Controls.Add(autoModeButton);
 
             startupButton = new LiveryButton("START WITH WINDOWS", Livery.SurfaceLight, Livery.Silver, 192);
             startupButton.Location = new Point(22, 548);
@@ -292,12 +302,16 @@ namespace SnailsMotorsport.IRacingTeammate
 
             sidebar.Resize += delegate
             {
+                autoModeButton.Top = Math.Max(450, sidebar.ClientSize.Height - 262);
                 startupButton.Top = Math.Max(500, sidebar.ClientSize.Height - 212);
                 updateButton.Top = Math.Max(550, sidebar.ClientSize.Height - 162);
                 folder.Top = Math.Max(500, sidebar.ClientSize.Height - 112);
                 footer.Top = Math.Max(550, sidebar.ClientSize.Height - 55);
             };
 
+            RefreshAutoModeButton();
+            if (!previewMode && settings.AutoModeEnabled)
+                StartupManager.SetEnabled(true, Application.ExecutablePath);
             RefreshStartupButton();
 
             return sidebar;
@@ -356,6 +370,31 @@ namespace SnailsMotorsport.IRacingTeammate
                 MessageBox.Show(this, "Windows startup could not be changed.", "iRacing Teammate",
                     MessageBoxButtons.OK, MessageBoxIcon.Warning);
             }
+        }
+
+        private void ToggleAutoMode()
+        {
+            settings.AutoModeEnabled = !settings.AutoModeEnabled;
+            store.Save(settings);
+            if (settings.AutoModeEnabled)
+            {
+                StartupManager.SetEnabled(true, Application.ExecutablePath);
+                sessionWasRunning = false;
+                SetActivity("Auto Mode enabled — waiting for an iRacing session.", Livery.Success);
+            }
+            else
+            {
+                SetActivity("Auto Mode disabled. Running applications were left untouched.", Livery.Muted);
+            }
+            RefreshAutoModeButton();
+            RefreshStartupButton();
+        }
+
+        private void RefreshAutoModeButton()
+        {
+            if (autoModeButton == null) return;
+            autoModeButton.Text = settings.AutoModeEnabled ? "AUTO MODE  •  ON" : "AUTO MODE  •  OFF";
+            autoModeButton.ForeColor = settings.AutoModeEnabled ? Livery.GoldBright : Livery.Silver;
         }
 
         private void RefreshStartupButton()
@@ -571,6 +610,128 @@ namespace SnailsMotorsport.IRacingTeammate
             foreach (AppDefinition definition in definitions)
                 cards[definition.Key].RefreshView(processes.IsRunning(definition));
             UpdateStackStatus();
+            HandleAutoMode();
+        }
+
+        private void HandleAutoMode()
+        {
+            if (previewMode) return;
+            bool sessionRunning = ProcessController.IsIRacingSessionRunning();
+            if (!settings.AutoModeEnabled)
+            {
+                sessionWasRunning = sessionRunning;
+                return;
+            }
+
+            if (sessionRunning && !sessionWasRunning)
+            {
+                sessionWasRunning = true;
+                StartAutoStack();
+            }
+            else if (!sessionRunning && sessionWasRunning)
+            {
+                sessionWasRunning = false;
+                ScheduleAutoStop();
+            }
+        }
+
+        private void StartAutoStack()
+        {
+            if (operationRunning) return;
+            operationRunning = true;
+            SetButtonsEnabled(false);
+            SetActivity("iRacing session detected — starting companion applications…", Livery.GoldBright);
+
+            Thread worker = new Thread(delegate()
+            {
+                int launched = 0;
+                List<AppDefinition> selected = definitions.Where(delegate(AppDefinition definition)
+                {
+                    return definition.Key != "iracing" && FindSetting(definition.Key).Enabled;
+                }).ToList();
+
+                foreach (AppDefinition definition in selected)
+                {
+                    if (!ProcessController.IsIRacingSessionRunning()) break;
+                    AppSetting setting = FindSetting(definition.Key);
+                    if (String.IsNullOrWhiteSpace(setting.Path) || !File.Exists(setting.Path))
+                    {
+                        Ui(delegate { SetActivity("Auto Mode skipped " + definition.Name + " — executable not configured.", Livery.Error); });
+                        continue;
+                    }
+
+                    bool wasRunning = processes.IsRunning(definition);
+                    string error;
+                    if (processes.Launch(definition, setting.Path, out error))
+                    {
+                        if (!wasRunning) launched++;
+                        Ui(delegate { cards[definition.Key].RefreshView(true); });
+                        if (!wasRunning && setting.DelaySeconds > 0) Thread.Sleep(setting.DelaySeconds * 1000);
+                    }
+                    else
+                    {
+                        Ui(delegate { SetActivity("Auto Mode could not start " + definition.Name + ": " + error, Livery.Error); });
+                    }
+                }
+
+                Ui(delegate
+                {
+                    SetActivity("Auto Mode active — " + launched + " companion application" +
+                        (launched == 1 ? "" : "s") + " started for this session.", Livery.Success);
+                    operationRunning = false;
+                    SetButtonsEnabled(true);
+                    RefreshStatuses();
+                });
+            });
+            worker.IsBackground = true;
+            worker.Start();
+        }
+
+        private void ScheduleAutoStop()
+        {
+            if (autoTransitionRunning) return;
+            autoTransitionRunning = true;
+            SetActivity("iRacing session ended — confirming shutdown…", Livery.GoldBright);
+
+            Thread worker = new Thread(delegate()
+            {
+                Thread.Sleep(3000);
+                if (ProcessController.IsIRacingSessionRunning())
+                {
+                    autoTransitionRunning = false;
+                    return;
+                }
+
+                while (operationRunning)
+                {
+                    Thread.Sleep(200);
+                    if (ProcessController.IsIRacingSessionRunning())
+                    {
+                        autoTransitionRunning = false;
+                        return;
+                    }
+                }
+
+                operationRunning = true;
+                int stopped = 0;
+                for (int i = definitions.Count - 1; i >= 0; i--)
+                {
+                    AppDefinition definition = definitions[i];
+                    if (definition.Key != "iracing" && processes.StopTracked(definition)) stopped++;
+                }
+
+                Ui(delegate
+                {
+                    SetActivity("Session cleanup complete — " + stopped + " companion application" +
+                        (stopped == 1 ? "" : "s") + " stopped.", Livery.Success);
+                    operationRunning = false;
+                    autoTransitionRunning = false;
+                    SetButtonsEnabled(true);
+                    RefreshStatuses();
+                });
+            });
+            worker.IsBackground = true;
+            worker.Start();
         }
 
         private void UpdateStackStatus()
