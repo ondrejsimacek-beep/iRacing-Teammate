@@ -26,7 +26,11 @@ namespace SnailsMotorsport.IRacingTeammate
                 Application.EnableVisualStyles();
                 Application.SetCompatibleTextRenderingDefault(false);
                 bool screenshotMode = args.Length == 2 && args[0] == "--screenshot";
-                LauncherForm form = new LauncherForm(screenshotMode);
+                bool startMinimized = !screenshotMode && Array.Exists(args, delegate(string argument)
+                {
+                    return String.Equals(argument, "--minimized", StringComparison.OrdinalIgnoreCase);
+                });
+                LauncherForm form = new LauncherForm(screenshotMode, startMinimized);
 
                 if (screenshotMode)
                 {

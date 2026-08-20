@@ -50,10 +50,15 @@ namespace SnailsMotorsport.IRacingTeammate
         private bool showHidden;
         private bool sessionWasRunning;
         private readonly bool previewMode;
+        private readonly bool startMinimized;
+        private NotifyIcon trayIcon;
+        private bool exitRequested;
+        private bool trayHintShown;
 
-        public LauncherForm(bool previewMode)
+        public LauncherForm(bool previewMode, bool startMinimized)
         {
             this.previewMode = previewMode;
+            this.startMinimized = startMinimized;
             definitions = AppCatalog.Create();
             store = new SettingsStore();
             settings = store.Load(definitions);
@@ -68,6 +73,12 @@ namespace SnailsMotorsport.IRacingTeammate
             ForeColor = Livery.Text;
             Font = new Font("Segoe UI", 9F);
             Icon = CreateAppIcon();
+            if (startMinimized)
+            {
+                WindowState = FormWindowState.Minimized;
+                ShowInTaskbar = false;
+                Opacity = 0D;
+            }
 
             TableLayoutPanel shell = new TableLayoutPanel();
             shell.Dock = DockStyle.Fill;
@@ -201,7 +212,19 @@ namespace SnailsMotorsport.IRacingTeammate
             refreshTimer.Tick += delegate { RefreshStatuses(); };
             refreshTimer.Start();
 
-            Shown += delegate { ApplyHiddenFilter(); ResizeCards(); RefreshStatuses(); UpdateStackStatus(); };
+            if (!previewMode) InitializeTray();
+            Shown += delegate
+            {
+                ApplyHiddenFilter();
+                ResizeCards();
+                RefreshStatuses();
+                UpdateStackStatus();
+                if (this.startMinimized)
+                {
+                    Opacity = 1D;
+                    BeginInvoke(new MethodInvoker(delegate { MinimizeToTray(false); }));
+                }
+            };
         }
 
         private Control BuildSidebar()
@@ -310,7 +333,7 @@ namespace SnailsMotorsport.IRacingTeammate
             };
 
             RefreshAutoModeButton();
-            if (!previewMode && settings.AutoModeEnabled)
+            if (!previewMode && (settings.AutoModeEnabled || StartupManager.IsEnabled()))
                 StartupManager.SetEnabled(true, Application.ExecutablePath);
             RefreshStartupButton();
 
@@ -757,6 +780,83 @@ namespace SnailsMotorsport.IRacingTeammate
         {
             if (IsDisposed) return;
             try { BeginInvoke(action); } catch { }
+        }
+
+        private void InitializeTray()
+        {
+            ContextMenuStrip menu = new ContextMenuStrip();
+            menu.BackColor = Livery.Surface;
+            menu.ForeColor = Livery.Text;
+
+            ToolStripMenuItem openItem = new ToolStripMenuItem("Open iRacing Teammate");
+            openItem.Font = new Font(openItem.Font, FontStyle.Bold);
+            openItem.Click += delegate { RestoreFromTray(); };
+            menu.Items.Add(openItem);
+            menu.Items.Add(new ToolStripSeparator());
+
+            ToolStripMenuItem exitItem = new ToolStripMenuItem("Exit");
+            exitItem.Click += delegate { ExitFromTray(); };
+            menu.Items.Add(exitItem);
+
+            trayIcon = new NotifyIcon();
+            trayIcon.Icon = Icon;
+            trayIcon.Text = "iRacing Teammate — Snails Motorsport";
+            trayIcon.ContextMenuStrip = menu;
+            trayIcon.Visible = true;
+            trayIcon.DoubleClick += delegate { RestoreFromTray(); };
+
+            Resize += delegate
+            {
+                if (WindowState == FormWindowState.Minimized)
+                    BeginInvoke(new MethodInvoker(delegate { MinimizeToTray(false); }));
+            };
+            FormClosing += delegate(object sender, FormClosingEventArgs e)
+            {
+                if (!exitRequested && e.CloseReason == CloseReason.UserClosing)
+                {
+                    e.Cancel = true;
+                    MinimizeToTray(true);
+                }
+            };
+            FormClosed += delegate
+            {
+                if (trayIcon != null)
+                {
+                    trayIcon.Visible = false;
+                    trayIcon.Dispose();
+                    trayIcon = null;
+                }
+                menu.Dispose();
+            };
+        }
+
+        private void MinimizeToTray(bool showHint)
+        {
+            Hide();
+            ShowInTaskbar = false;
+            if (showHint && !trayHintShown && trayIcon != null)
+            {
+                trayIcon.ShowBalloonTip(2500, "iRacing Teammate",
+                    "Teammate is still running and waiting for an iRacing session.", ToolTipIcon.Info);
+                trayHintShown = true;
+            }
+        }
+
+        private void RestoreFromTray()
+        {
+            ShowInTaskbar = true;
+            Show();
+            WindowState = FormWindowState.Normal;
+            Activate();
+            BringToFront();
+        }
+
+        private void ExitFromTray()
+        {
+            exitRequested = true;
+            if (trayIcon != null) trayIcon.Visible = false;
+            refreshTimer.Stop();
+            Close();
         }
 
         private static Icon CreateAppIcon()
