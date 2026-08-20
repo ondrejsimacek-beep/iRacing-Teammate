@@ -25,6 +25,8 @@ came from this repository's Releases page before running it.
 - Safe **Stop launched** action limited to process trees started by Teammate.
 - Hide/show application cards without deleting their configuration.
 - Optional **Start with Windows** toggle using the current user's standard Startup folder.
+- Notification-area operation: Windows startup, the minimize button, and the window
+  close button keep Teammate available beside the clock without occupying the taskbar.
 - **Auto Mode** starts selected companion apps when an iRacing simulator session
   begins and stops only Teammate-launched apps after the session ends.
 - GitHub Releases update check with confirmation before opening a download page.
@@ -54,6 +56,8 @@ they start when the simulator session process appears. A three-second confirmati
 window prevents a brief process transition from triggering premature cleanup.
 
 Closing Teammate itself does not close racing software.
+Use **Exit** from the notification-area icon menu when you want to stop Teammate
+completely. Double-click the icon to restore the main window.
 
 ## Building from source
 

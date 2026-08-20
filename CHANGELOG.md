@@ -4,6 +4,17 @@ All notable changes to iRacing Teammate are documented here.
 
 The project uses semantic versioning. GitHub release tags use the `vX.Y.Z` format.
 
+## [1.2.2] - 2026-08-20
+
+### Added
+
+- Notification-area mode with restore and explicit exit actions.
+
+### Changed
+
+- Start with Windows now launches Teammate minimized to the notification area.
+- Closing or minimizing the main window keeps Auto Mode running in the tray.
+
 ## [1.2.1] - 2026-08-19
 
 ### Added

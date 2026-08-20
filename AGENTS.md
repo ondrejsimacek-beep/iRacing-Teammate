@@ -36,5 +36,5 @@
 - After process-lifecycle changes, test a launcher that exits after spawning a differently named target and verify `StopTracked` closes the handed-off process.
 - Run a screenshot smoke test and inspect the resulting UI after layout or catalog changes.
 - Check `git diff --check`, confirm no local absolute paths or VRS Setup Downloader references leaked into tracked files, and verify no new Microsoft Defender detection after the final build.
-- For a release: update `version.txt` and `CHANGELOG.md`, build with the repository embedded, commit and push `main`, wait for the Build workflow, create and push annotated tag `vX.Y.Z`, wait for the release workflow, and verify the downloadable ZIP against its published SHA-256 file.
+- For a release: work on a non-protected feature branch, update `version.txt` and `CHANGELOG.md`, build with the repository embedded, commit and push the branch, open a pull request, wait for the required `build` check, merge it, update local `main`, create and push annotated tag `vX.Y.Z`, wait for the release workflow, and verify the downloadable ZIP against its published SHA-256 file.
 - Do not claim the executable is digitally signed until a real code-signing certificate is configured.

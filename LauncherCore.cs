@@ -555,8 +555,10 @@ namespace SnailsMotorsport.IRacingTeammate
                     new object[] { executablePath });
                 shortcutType.InvokeMember("WorkingDirectory", BindingFlags.SetProperty, null, shortcut,
                     new object[] { Path.GetDirectoryName(executablePath) });
+                shortcutType.InvokeMember("Arguments", BindingFlags.SetProperty, null, shortcut,
+                    new object[] { "--minimized" });
                 shortcutType.InvokeMember("Description", BindingFlags.SetProperty, null, shortcut,
-                    new object[] { "Start iRacing Teammate with Windows" });
+                    new object[] { "Start iRacing Teammate minimized with Windows" });
                 shortcutType.InvokeMember("Save", BindingFlags.InvokeMethod, null, shortcut, null);
                 return true;
             }
